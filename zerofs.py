@@ -3,11 +3,14 @@ import argparse
 import requests
 from tqdm import tqdm
 import base64
+import logging
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 
 CHUNK_SIZE = 100 * 1024 * 1024  # Don't change. server will reject upload.
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def encrypt_file(input_path, output_path):
@@ -58,7 +61,7 @@ def decrypt_file(encrypted_path, decrypted_path, key):
             f_out.write(final_unpadded)
 
 
-def create_file_record(api_url, file_name, file_size, key, user_token=None, file_note=None, vault_id=None):
+def create_file_record(api_url, file_name, file_size, key, user_token=None, file_note="", vault_id=None):
     payload = {
         "file_name": file_name,
         "file_size": file_size,
@@ -76,7 +79,7 @@ def create_file_record(api_url, file_name, file_size, key, user_token=None, file
 
     response = requests.post(api_url, headers=headers, json=payload)
     response.raise_for_status()
-    print("File record created:", response.json())
+    logging.info("File record created: %s", response.json())
     return response.json()
 
 
@@ -105,7 +108,7 @@ def upload_single_part(url, file_path):
                 yield data
         response = requests.put(url, data=stream_reader(), headers=headers)
         response.raise_for_status()
-    print("Upload complete (single part). Response:", response.text)
+    logging.info("Upload complete (single part). Response: %s", response.text)
 
 
 def upload_multipart(upload_info, file_path, api_merge_url):
@@ -122,7 +125,7 @@ def upload_multipart(upload_info, file_path, api_merge_url):
             chunk = f.read(CHUNK_SIZE)
             if not chunk:
                 break
-            print(f"Uploading part {part_number} ({len(chunk)} bytes)")
+            logging.info("Uploading part %d (%d bytes)", part_number, len(chunk))
             with tqdm(total=len(chunk), unit='B', unit_scale=True, desc=f"Part {part_number}") as pbar:
                 def chunk_reader():
                     idx = 0
@@ -136,7 +139,7 @@ def upload_multipart(upload_info, file_path, api_merge_url):
                 etag = response.headers.get('ETag', '').strip('"')
                 part_etags.append({'PartNumber': part_number, 'ETag': etag})
 
-    print("All parts uploaded. Completing multipart upload...")
+    logging.info("All parts uploaded. Completing multipart upload...")
 
     merge_headers = {
         'vaultid': upload_info.get("vaultid"),
@@ -151,10 +154,9 @@ def upload_multipart(upload_info, file_path, api_merge_url):
         api_merge_url, headers=merge_headers, json=merge_payload)
     if response.ok:
         data = response.json()
-        print(f"Multipart upload complete. File ID: {data.get('fileid')}")
+        logging.info("Multipart upload complete. File ID: %s", data.get('fileid'))
     else:
-        print("Failed to complete multipart upload.")
-        print(response.text)
+        logging.error("Failed to complete multipart upload. Response: %s", response.text)
         response.raise_for_status()
 
 
@@ -175,48 +177,48 @@ def main():
         "--createrecord", default="https://zerofs.link/api/files/create_record/", help="Create Records in DB")
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
-    parser.add_argument("--note", help="Optional file note", default=None)
+    parser.add_argument("--note", help="Optional file note", default="")
     parser.add_argument("--vault", default="f4b1c8wzxe")
     args = parser.parse_args()
 
     if args.decrypt:
         if not args.keyfile or not args.output:
-            print("ERROR: --keyfile and --output are required for decryption")
+            logging.error("--keyfile and --output are required for decryption")
             return
         with open(args.keyfile, 'rb') as kf:
             key = kf.read()
         decrypt_file(args.file, args.output, key)
-        print(f"Decrypted file saved to {args.output}")
+        logging.info("Decrypted file saved to %s", args.output)
         return
 
     file_path = args.file
     filename = os.path.basename(file_path)
 
     encrypted_file_path = f"{file_path}.0fs"
-    print(f"Encrypting file {file_path} ...")
+    logging.info("Encrypting file %s ...", file_path)
     enc_key = encrypt_file(file_path, encrypted_file_path)
 
     enc_key_filename = f"{filename}_decryption_key.txt"
     with open(enc_key_filename, 'wb') as key_file:
         key_file.write(enc_key)
-    print(f"Decryption key saved to {enc_key_filename}")
+    logging.info("Decryption key saved to %s", enc_key_filename)
 
     enc_filename = os.path.basename(encrypted_file_path)
     filesize = os.path.getsize(encrypted_file_path)
 
-    print(f"Fetching upload info ...")
+    logging.info("Fetching upload info ...")
     upload_info = get_upload_urls(args.api, enc_filename, filesize)
 
     key = upload_info["key"]
 
     if not upload_info["multipart"]:
-        print("Using single PUT upload.")
+        logging.info("Using single PUT upload.")
         upload_single_part(upload_info["url"], encrypted_file_path)
     else:
-        print("Using multipart upload.")
+        logging.info("Using multipart upload.")
         upload_multipart(upload_info, encrypted_file_path, args.merge)
 
-    print(f"Creating file record ...")
+    logging.info("Creating file record ...")
     create_file_record(
         args.createrecord,
         enc_filename,
