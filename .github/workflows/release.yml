@@ -1,54 +1,105 @@
-name: Build and Release Zerofs Upload Binary
+name: Cross-Platform Build and Release Zerofs
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch: 
+    tags:
+      - 'v*'    # Trigger on tags like v1.0.0
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        python-version: ['3.8','3.9','3.10', '3.11', '3.12', '3.13']
-
+    outputs:
+      artifact-name: zerofs-linux
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.13'  # stable version recommended
 
-    - name: Install dependencies
-      run: |
+    - run: |
         sudo apt update
-        sudo apt install -y build-essential python3-dev gcc g++
-        pip install --upgrade pip
+        sudo apt install -y build-essential python3-dev gcc g++ upx
+        pip install --upgrade pip nuitka
+    - run: |
+        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-linux
+        upx --best zerofs-linux
 
-        pip install nuitka
+    - uses: actions/upload-artifact@v3
+      with:
+        name: zerofs-linux
+        path: zerofs-linux
 
-    - name: Compile using Nuitka
-      run: |
-        nuitka zerofs.py \
-          --onefile \
-          --standalone \
-          --output-filename=zerofs
+  build-windows:
+    runs-on: windows-latest
+    outputs:
+      artifact-name: zerofs-windows.exe
+    steps:
+    - uses: actions/checkout@v4
 
-    - name: Generate tag version
-      id: version
-      run: |
-        VERSION="v$(date +'%Y.%m.%d.%H%M%S')"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
 
-    - name: Create GitHub release and upload binary
+    - run: |
+        pip install --upgrade pip nuitka
+    - run: |
+        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: zerofs-windows.exe
+        path: zerofs-windows.exe
+
+  build-macos:
+    runs-on: macos-latest
+    outputs:
+      artifact-name: zerofs-macos
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - run: |
+        pip install --upgrade pip nuitka
+    - run: |
+        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-macos
+
+    - uses: actions/upload-artifact@main
+      with:
+        name: zerofs-macos
+        path: zerofs-macos
+
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download Linux binary
+      uses: actions/download-artifact@main
+      with:
+        name: zerofs-linux
+        path: release
+
+    - name: Download Windows binary
+      uses: actions/download-artifact@main
+      with:
+        name: zerofs-windows.exe
+        path: release
+
+    - name: Download macOS binary
+      uses: actions/download-artifact@main
+      with:
+        name: zerofs-macos
+        path: release
+
+    - name: Create GitHub Release and upload binaries
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: Release ${{ steps.version.outputs.version }}
-        files: zerofs
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        files: release/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
