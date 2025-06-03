@@ -5,108 +5,103 @@ on:
     branches:
       - main
     tags:
-      - 'v*'  # Trigger on tags like v1.0.0
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    outputs:
+      linux_path: ${{ steps.out.outputs.path }}
     steps:
     - uses: actions/checkout@v4
-    
+
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-    
+
     - name: Install dependencies and build
       run: |
         sudo apt update
         sudo apt install -y build-essential python3-dev gcc g++ upx
         pip install --upgrade pip nuitka
-        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-linux
-        upx --best zerofs-linux
-    
-    - uses: actions/upload-artifact@v4
-      with:
-        name: zerofs-linux
-        path: zerofs-linux
+        mkdir -p release
+        nuitka zerofs.py --onefile --standalone --output-filename=release/zerofs-linux
+        upx --best release/zerofs-linux
+
+    - id: out
+      run: echo "path=release/zerofs-linux" >> $GITHUB_OUTPUT
 
   build-windows:
     runs-on: windows-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    outputs:
+      windows_path: ${{ steps.out.outputs.path }}
     steps:
     - uses: actions/checkout@v4
-    
+
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-    
+
     - name: Install dependencies and build
       shell: cmd
       run: |
         pip install --upgrade pip nuitka
-        echo Y | nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe --windows-console-mode=disable --assume-yes-for-downloads
-    
-    - name: Verify build output
-      shell: cmd
-      run: |
-        dir zerofs-windows.exe
-        if not exist zerofs-windows.exe exit 1
-    
-    - uses: actions/upload-artifact@v4
-      with:
-        name: zerofs-windows
-        path: zerofs-windows.exe
+        mkdir release
+        echo Y | nuitka zerofs.py --onefile --standalone --output-dir=release --output-filename=zerofs-windows.exe --windows-console-mode=disable --assume-yes-for-downloads
+
+    - id: out
+      shell: bash
+      run: echo "path=release/zerofs-windows.exe" >> $GITHUB_OUTPUT
 
   build-macos:
     runs-on: macos-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    outputs:
+      macos_path: ${{ steps.out.outputs.path }}
     steps:
     - uses: actions/checkout@v4
-    
+
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-    
+
     - name: Install dependencies and build
       run: |
         pip install --upgrade pip nuitka
-        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-macos
-    
-    - uses: actions/upload-artifact@v4
-      with:
-        name: zerofs-macos
-        path: zerofs-macos
+        mkdir -p release
+        nuitka zerofs.py --onefile --standalone --output-filename=release/zerofs-macos
+
+    - id: out
+      run: echo "path=release/zerofs-macos" >> $GITHUB_OUTPUT
 
   release:
+    if: startsWith(github.ref, 'refs/tags/')
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
-    - name: Download Linux binary
-      uses: actions/download-artifact@v4
-      with:
-        name: zerofs-linux
-        path: release
-    
-    - name: Download Windows binary
-      uses: actions/download-artifact@v4
-      with:
-        name: zerofs-windows
-        path: release
-    
-    - name: Download macOS binary
-      uses: actions/download-artifact@v4
-      with:
-        name: zerofs-macos
-        path: release
-    
-    - name: List release files
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Copy Linux binary
+      run: cp build-linux/release/zerofs-linux release/
+
+    - name: Copy Windows binary
+      run: cp build-windows/release/zerofs-windows.exe release/
+
+    - name: Copy macOS binary
+      run: cp build-macos/release/zerofs-macos release/
+
+    - name: List binaries
       run: ls -la release/
-    
+
     - name: Create GitHub Release and upload binaries
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name || github.sha }}
-        name: Release ${{ github.ref_name || github.sha }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         files: release/*
-        draft: ${{ !startsWith(github.ref, 'refs/tags/') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
