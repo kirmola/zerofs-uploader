@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 
-CHUNK_SIZE = 100 * 1024 * 1024  # 100 MB
+CHUNK_SIZE = 100 * 1024 * 1024  # Don't change. server will reject upload.
 
 
 def encrypt_file(input_path, output_path):
