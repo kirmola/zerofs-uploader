@@ -2,7 +2,6 @@ import os
 import argparse
 import requests
 from tqdm import tqdm
-import json
 import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -148,7 +147,8 @@ def upload_multipart(upload_info, file_path, api_merge_url):
     merge_payload = {
         'parts': part_etags
     }
-    response = requests.post(api_merge_url, headers=merge_headers, json=merge_payload)
+    response = requests.post(
+        api_merge_url, headers=merge_headers, json=merge_payload)
     if response.ok:
         data = response.json()
         print(f"Multipart upload complete. File ID: {data.get('fileid')}")
@@ -159,14 +159,20 @@ def upload_multipart(upload_info, file_path, api_merge_url):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Encrypt/upload or decrypt file")
+    parser = argparse.ArgumentParser(
+        description="Encrypt/upload or decrypt file")
     parser.add_argument("file", help="Path to file")
-    parser.add_argument("--decrypt", action="store_true", help="Only decrypt the file, no upload")
-    parser.add_argument("--keyfile", help="Path to decryption key file (hex encoded)")
+    parser.add_argument("--decrypt", action="store_true",
+                        help="Only decrypt the file, no upload")
+    parser.add_argument(
+        "--keyfile", help="Path to decryption key file (hex encoded)")
     parser.add_argument("--output", help="Output path for decrypted file")
-    parser.add_argument("--api", default="https://zerofs.link/api/files/request_upload/", help="API endpoint to get upload URLs")
-    parser.add_argument("--merge", default="https://zerofs.link/api/files/merge/", help="Multipart merge endpoint")
-    parser.add_argument("--createrecord", default="https://zerofs.link/api/files/create_record/", help="Create Records in DB")
+    parser.add_argument("--api", default="https://zerofs.link/api/files/request_upload/",
+                        help="API endpoint to get upload URLs")
+    parser.add_argument(
+        "--merge", default="https://zerofs.link/api/files/merge/", help="Multipart merge endpoint")
+    parser.add_argument(
+        "--createrecord", default="https://zerofs.link/api/files/create_record/", help="Create Records in DB")
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
     parser.add_argument("--note", help="Optional file note", default=None)
@@ -194,7 +200,7 @@ def main():
     with open(enc_key_filename, 'wb') as key_file:
         key_file.write(enc_key)
     print(f"Decryption key saved to {enc_key_filename}")
-    
+
     enc_filename = os.path.basename(encrypted_file_path)
     filesize = os.path.getsize(encrypted_file_path)
 
@@ -220,6 +226,7 @@ def main():
         file_note=args.note,
         vault_id=args.vault
     )
+
 
 if __name__ == "__main__":
     main()
