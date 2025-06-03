@@ -44,7 +44,7 @@ jobs:
       shell: cmd
       run: |
         pip install --upgrade pip nuitka
-        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe --windows-console-mode=disable
+        echo Y | nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe --windows-console-mode=disable --assume-yes-for-downloads
     
     - name: Verify build output
       shell: cmd
