@@ -2,73 +2,66 @@ name: Cross-Platform Build and Release Zerofs
 
 on:
   push:
+    branches:
+      - main
     tags:
-      - 'v*'    # Trigger on tags like v1.0.0
+      - 'v*'  # Trigger on tags like v1.0.0
   workflow_dispatch:
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
-    outputs:
-      artifact-name: zerofs-linux
     steps:
     - uses: actions/checkout@v4
 
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.13'  # stable version recommended
+        python-version: '3.13'
 
     - run: |
         sudo apt update
         sudo apt install -y build-essential python3-dev gcc g++ upx
         pip install --upgrade pip nuitka
-    - run: |
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-linux
         upx --best zerofs-linux
 
-    - uses: actions/upload-artifact@v4.6.2
+    - uses: actions/upload-artifact@v4
       with:
         name: zerofs-linux
         path: zerofs-linux
 
   build-windows:
     runs-on: windows-latest
-    outputs:
-      artifact-name: zerofs-windows.exe
     steps:
     - uses: actions/checkout@v4
 
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version: '3.13'
 
     - run: |
         pip install --upgrade pip nuitka
-    - run: |
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe
 
-    - uses: actions/upload-artifact@v4.6.2
+    - uses: actions/upload-artifact@v4
       with:
-        name: zerofs-windows.exe
+        name: zerofs-windows
         path: zerofs-windows.exe
 
   build-macos:
     runs-on: macos-latest
-    outputs:
-      artifact-name: zerofs-macos
     steps:
     - uses: actions/checkout@v4
 
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version: '3.13'
 
     - run: |
         pip install --upgrade pip nuitka
-    - run: |
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-macos
 
-    - uses: actions/upload-artifact@v4.6.2
+    - uses: actions/upload-artifact@v4
       with:
         name: zerofs-macos
         path: zerofs-macos
@@ -78,19 +71,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download Linux binary
-      uses: actions/download-artifact@v4.3.0
+      uses: actions/download-artifact@v4
       with:
         name: zerofs-linux
         path: release
 
     - name: Download Windows binary
-      uses: actions/download-artifact@v4.3.0
+      uses: actions/download-artifact@v4
       with:
-        name: zerofs-windows.exe
+        name: zerofs-windows
         path: release
 
     - name: Download macOS binary
-      uses: actions/download-artifact@v4.3.0
+      uses: actions/download-artifact@v4
       with:
         name: zerofs-macos
         path: release
