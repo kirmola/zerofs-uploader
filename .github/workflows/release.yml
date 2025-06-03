@@ -13,18 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
+    
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-
-    - run: |
+    
+    - name: Install dependencies and build
+      run: |
         sudo apt update
         sudo apt install -y build-essential python3-dev gcc g++ upx
         pip install --upgrade pip nuitka
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-linux
         upx --best zerofs-linux
-
+    
     - uses: actions/upload-artifact@v4
       with:
         name: zerofs-linux
@@ -34,15 +35,23 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-
+    
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-
-    - run: |
+    
+    - name: Install dependencies and build
+      shell: cmd
+      run: |
         pip install --upgrade pip nuitka
-        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe
-
+        nuitka zerofs.py --onefile --standalone --output-filename=zerofs-windows.exe --windows-console-mode=disable
+    
+    - name: Verify build output
+      shell: cmd
+      run: |
+        dir zerofs-windows.exe
+        if not exist zerofs-windows.exe exit 1
+    
     - uses: actions/upload-artifact@v4
       with:
         name: zerofs-windows
@@ -52,15 +61,16 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
-
+    
     - uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-
-    - run: |
+    
+    - name: Install dependencies and build
+      run: |
         pip install --upgrade pip nuitka
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-macos
-
+    
     - uses: actions/upload-artifact@v4
       with:
         name: zerofs-macos
@@ -69,25 +79,29 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')  # Only run on tag pushes
     steps:
     - name: Download Linux binary
       uses: actions/download-artifact@v4
       with:
         name: zerofs-linux
         path: release
-
+    
     - name: Download Windows binary
       uses: actions/download-artifact@v4
       with:
         name: zerofs-windows
         path: release
-
+    
     - name: Download macOS binary
       uses: actions/download-artifact@v4
       with:
         name: zerofs-macos
         path: release
-
+    
+    - name: List release files
+      run: ls -la release/
+    
     - name: Create GitHub Release and upload binaries
       uses: softprops/action-gh-release@v2
       with:
