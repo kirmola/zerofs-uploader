@@ -3,7 +3,8 @@ name: Build and Release Zerofs Upload Binary
 on:
   push:
     branches:
-      - main 
+      - main
+  workflow_dispatch: 
 
 jobs:
   build:
