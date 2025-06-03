@@ -68,7 +68,7 @@ jobs:
     - run: |
         nuitka zerofs.py --onefile --standalone --output-filename=zerofs-macos
 
-    - uses: actions/upload-artifact@main
+    - uses: actions/upload-artifact@v4.6.2
       with:
         name: zerofs-macos
         path: zerofs-macos
@@ -78,19 +78,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download Linux binary
-      uses: actions/download-artifact@main
+      uses: actions/download-artifact@v4.3.0
       with:
         name: zerofs-linux
         path: release
 
     - name: Download Windows binary
-      uses: actions/download-artifact@main
+      uses: actions/download-artifact@v4.3.0
       with:
         name: zerofs-windows.exe
         path: release
 
     - name: Download macOS binary
-      uses: actions/download-artifact@main
+      uses: actions/download-artifact@v4.3.0
       with:
         name: zerofs-macos
         path: release
