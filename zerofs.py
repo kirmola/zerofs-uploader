@@ -25,7 +25,7 @@ def encrypt_file(input_path, output_path):
         with open(input_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
             f_out.write(iv)
             while True:
-                chunk = f_in.read(64 * 1024)
+                chunk = f_in.read(500 * 1024 * 1024)
                 if not chunk:
                     break
                 padded_chunk = padder.update(chunk)
@@ -50,7 +50,7 @@ def decrypt_file(encrypted_path, decrypted_path, key):
 
             with open(decrypted_path, 'wb') as f_out:
                 while True:
-                    chunk = f_in.read(64 * 1024)
+                    chunk = f_in.read(500 * 1024 * 1024)
                     if not chunk:
                         break
                     decrypted_chunk = decryptor.update(chunk)
@@ -136,8 +136,8 @@ def upload_multipart(upload_info, file_path, api_merge_url):
                 chunk = f.read(CHUNK_SIZE)
                 if not chunk:
                     break
-                logging.info("Uploading part %d (%d bytes)", part_number, len(chunk))
-                with tqdm(total=len(chunk), unit='B', unit_scale=True, desc=f"Part {part_number}") as pbar:
+                logging.info(f"Uploading part {part_number} of {len(parts)} ({len(chunk)} bytes)")
+                with tqdm(total=len(chunk), unit='B', unit_scale=True, desc=f"Part {part_number}/{len(parts)}") as pbar:
                     def chunk_reader():
                         idx = 0
                         while idx < len(chunk):
