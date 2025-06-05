@@ -93,7 +93,7 @@ Flags:
 
 ## Important Crap
 
-* **CHUNK\_SIZE** is locked at 100MB. Don’t touch it. We mean it.
+* **CHUNK\_SIZE** is locked at 250MB. Don’t touch it. We mean it.
 * Every file gets its own AES key. Lose it = bye-bye data.
 * Notes get base64’d. No, we won’t read them. Probably.
 * Uploads show live progress ‘cause we're not animals.
