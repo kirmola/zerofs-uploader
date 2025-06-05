@@ -8,62 +8,51 @@ import sys
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import io
 
-CHUNK_SIZE = 90 * 1024 * 1024  # Don't change. server will reject upload.
+CHUNK_SIZE = 250 * 1024 * 1024  # Don't change. server will reject upload.
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+class ProgressBytesIO(io.BytesIO):
+    def __init__(self, data, pbar):
+        super().__init__(data)
+        self.pbar = pbar
+
+    def read(self, n=-1):
+        chunk = super().read(n)
+        self.pbar.update(len(chunk))
+        return chunk
+    
 
 def encrypt_file(input_path, output_path):
-    try:
-        key = os.urandom(32)
-        iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        padder = padding.PKCS7(128).padder()
+    key = AESGCM.generate_key(bit_length=256)
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)  # GCM standard
 
-        with open(input_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
-            f_out.write(iv)
-            while True:
-                chunk = f_in.read(500 * 1024 * 1024)
-                if not chunk:
-                    break
-                padded_chunk = padder.update(chunk)
-                encrypted_chunk = encryptor.update(padded_chunk)
-                f_out.write(encrypted_chunk)
-            final_padded = padder.finalize()
-            final_encrypted = encryptor.update(final_padded) + encryptor.finalize()
-            f_out.write(final_encrypted)
-        return key
-    except (OSError, ValueError) as e:
-        logging.error("Encryption failed: %s", e)
-        raise
+    with open(input_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
+        f_out.write(nonce)
+        while True:
+            chunk = f_in.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            encrypted_chunk = aesgcm.encrypt(nonce, chunk, None)
+            f_out.write(encrypted_chunk)
+    return key
 
 
 def decrypt_file(encrypted_path, decrypted_path, key):
-    try:
-        with open(encrypted_path, 'rb') as f_in:
-            iv = f_in.read(16)
-            cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-            decryptor = cipher.decryptor()
-            unpadder = padding.PKCS7(128).unpadder()
-
-            with open(decrypted_path, 'wb') as f_out:
-                while True:
-                    chunk = f_in.read(500 * 1024 * 1024)
-                    if not chunk:
-                        break
-                    decrypted_chunk = decryptor.update(chunk)
-                    unpadded_data = unpadder.update(decrypted_chunk)
-                    f_out.write(unpadded_data)
-
-                final_data = decryptor.finalize()
-                final_unpadded = unpadder.update(final_data) + unpadder.finalize()
-                f_out.write(final_unpadded)
-    except (OSError, ValueError) as e:
-        logging.error("Decryption failed: %s", e)
-        raise
-
+    aesgcm = AESGCM(key)
+    with open(encrypted_path, 'rb') as f_in:
+        nonce = f_in.read(12)
+        with open(decrypted_path, 'wb') as f_out:
+            while True:
+                chunk = f_in.read(CHUNK_SIZE + 16)  # Encrypted + auth tag
+                if not chunk:
+                    break
+                decrypted = aesgcm.decrypt(nonce, chunk, None)
+                f_out.write(decrypted)
 
 def create_file_record(api_url, file_name, file_size, key, user_token=None, file_note="", vault_id=None):
     try:
@@ -137,15 +126,14 @@ def upload_multipart(upload_info, file_path, api_merge_url):
                 if not chunk:
                     break
                 logging.info(f"Uploading part {part_number} of {len(parts)} ({len(chunk)} bytes)")
+                # headers = {
+                #     'Content-Length': str(len(chunk)),
+                #     'Content-Type': 'application/octet-stream'
+                # }
                 with tqdm(total=len(chunk), unit='B', unit_scale=True, desc=f"Part {part_number}/{len(parts)}") as pbar:
-                    def chunk_reader():
-                        idx = 0
-                        while idx < len(chunk):
-                            block = chunk[idx:idx + 1024 * 1024]
-                            idx += len(block)
-                            pbar.update(len(block))
-                            yield block
-                    response = requests.put(url, data=chunk_reader())
+                    data = ProgressBytesIO(chunk, pbar)
+                    response = requests.put(url, data=data)
+                    print(response.text)
                     response.raise_for_status()
                     etag = response.headers.get('ETag', '').strip('"')
                     part_etags.append({'PartNumber': part_number, 'ETag': etag})
@@ -179,7 +167,7 @@ def main():
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
     parser.add_argument("--note", help="Optional file note", default="")
-    parser.add_argument("--vault", default="euc1.zerofs.link")  # another is usc1.zerofs.link
+    parser.add_argument("--vault", default="euc1")  # another is usc1.zerofs.link
     args = parser.parse_args()
 
     try:
