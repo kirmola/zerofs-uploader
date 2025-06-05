@@ -5,6 +5,8 @@ from tqdm import tqdm
 import base64
 import logging
 import sys
+import glob
+from pathlib import Path
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
@@ -155,73 +157,94 @@ def upload_multipart(upload_info, file_path, api_merge_url):
         raise
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Encrypt/upload or decrypt file")
-    parser.add_argument("file", help="Path to file")
-    parser.add_argument("--encrypt", action="store_true", help="Encrypt file before uploading")
-    parser.add_argument("--decrypt", action="store_true", help="Only decrypt the file, no upload")
-    parser.add_argument("--keyfile", help="Path to decryption key file (hex encoded)")
-    parser.add_argument("--output", help="Output path for decrypted file")
-    parser.add_argument("--api", default="https://zerofs.link/api/files/request_upload/")
-    parser.add_argument("--merge", default="https://zerofs.link/api/files/merge/")
-    parser.add_argument("--createrecord", default="https://zerofs.link/api/files/create_record/")
-    parser.add_argument("--extra", help="Extra future flag", default=None)
-    parser.add_argument("--token", help="Optional user token", default=None)
-    parser.add_argument("--note", help="Optional file note", default="")
-    parser.add_argument("--vault", default="euc1")  # another is usc1.zerofs.link
-    args = parser.parse_args()
+def collect_files(file_paths, recursive=False):
+    """Collect all files from given paths, handling wildcards and directories"""
+    all_files = []
+    
+    for path_pattern in file_paths:
+        # Handle glob patterns (wildcards)
+        if '*' in path_pattern or '?' in path_pattern:
+            matching_files = glob.glob(path_pattern)
+            for file_path in matching_files:
+                if os.path.isfile(file_path):
+                    all_files.append(os.path.abspath(file_path))
+        # Handle directories
+        elif os.path.isdir(path_pattern):
+            path_obj = Path(path_pattern)
+            if recursive:
+                # Recursively find all files
+                for file_path in path_obj.rglob('*'):
+                    if file_path.is_file():
+                        all_files.append(str(file_path.absolute()))
+            else:
+                # Only files in the immediate directory
+                for file_path in path_obj.iterdir():
+                    if file_path.is_file():
+                        all_files.append(str(file_path.absolute()))
+        # Handle individual files
+        elif os.path.isfile(path_pattern):
+            all_files.append(os.path.abspath(path_pattern))
+        else:
+            logging.warning("Path not found or not accessible: %s", path_pattern)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_files = []
+    for file_path in all_files:
+        if file_path not in seen:
+            seen.add(file_path)
+            unique_files.append(file_path)
+    
+    return unique_files
 
+
+def process_single_file(file_path, args, file_index, total_files):
+    """Process a single file (encrypt if needed, then upload)"""
+    filename = os.path.basename(file_path)
+    enc_key = None
+    
+    logging.info("=" * 60)
+    logging.info("Processing file %d of %d: %s", file_index + 1, total_files, filename)
+    logging.info("=" * 60)
+    
     try:
-        if args.decrypt:
-            if not args.keyfile or not args.output:
-                logging.error("--keyfile and --output are required for decryption")
-                sys.exit(1)
-            with open(args.keyfile, 'rb') as kf:
-                key = kf.read()
-            decrypt_file(args.file, args.output, key)
-            logging.info("Decrypted file saved to %s", args.output)
-            return
-
-        file_path = args.file
-        filename = os.path.basename(file_path)
-        enc_key = None  # Initialize encryption key as None
-
         # Handle encryption logic
         if args.encrypt:
             encrypted_file_path = f"{file_path}.0fs"
-            logging.info("Encrypting file %s ...", file_path)
+            logging.info("Encrypting file: %s", filename)
             enc_key = encrypt_file(file_path, encrypted_file_path)
 
             # Save encryption key to file
             enc_key_filename = f"{filename}_decryption_key.txt"
             with open(enc_key_filename, 'wb') as key_file:
                 key_file.write(enc_key)
-            logging.info("Decryption key saved to %s", enc_key_filename)
+            logging.info("Decryption key saved to: %s", enc_key_filename)
             
             # Use encrypted file for upload
             upload_file_path = encrypted_file_path
             upload_filename = os.path.basename(encrypted_file_path)
         else:
-            logging.info("Uploading file without encryption: %s", file_path)
+            logging.info("Uploading file without encryption: %s", filename)
             # Use original file for upload
             upload_file_path = file_path
             upload_filename = filename
 
         filesize = os.path.getsize(upload_file_path)
+        logging.info("File size: %.2f MB", filesize / (1024 * 1024))
 
-        logging.info("Fetching upload info ...")
+        logging.info("Fetching upload info for: %s", upload_filename)
         upload_info = get_upload_urls(args.api, upload_filename, filesize)
 
         key = upload_info["key"]
 
         if not upload_info["multipart"]:
-            logging.info("Using single PUT upload.")
+            logging.info("Using single PUT upload for: %s", upload_filename)
             upload_single_part(upload_info["url"], upload_file_path)
         else:
-            logging.info("Using multipart upload.")
+            logging.info("Using multipart upload for: %s", upload_filename)
             upload_multipart(upload_info, upload_file_path, args.merge)
 
-        logging.info("Creating file record ...")
+        logging.info("Creating file record for: %s", upload_filename)
         create_file_record(
             args.createrecord,
             upload_filename,
@@ -236,7 +259,92 @@ def main():
         if args.encrypt and os.path.exists(encrypted_file_path):
             os.remove(encrypted_file_path)
             logging.info("Temporary encrypted file removed: %s", encrypted_file_path)
+        
+        logging.info("✅ Successfully processed: %s", filename)
+        return True
+        
+    except Exception as e:
+        logging.error("❌ Failed to process %s: %s", filename, e)
+        # Clean up on failure
+        if args.encrypt:
+            encrypted_file_path = f"{file_path}.0fs"
+            if os.path.exists(encrypted_file_path):
+                os.remove(encrypted_file_path)
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Encrypt/upload or decrypt files (supports multiple files)")
+    parser.add_argument("files", nargs='+', help="Path(s) to file(s), supports wildcards and directories")
+    parser.add_argument("--encrypt", action="store_true", help="Encrypt files before uploading")
+    parser.add_argument("--recursive", "-r", action="store_true", help="Process directories recursively")
+    parser.add_argument("--decrypt", action="store_true", help="Only decrypt the file, no upload")
+    parser.add_argument("--keyfile", help="Path to decryption key file (hex encoded)")
+    parser.add_argument("--output", help="Output path for decrypted file (decrypt mode only)")
+    parser.add_argument("--api", default="https://zerofs.link/api/files/request_upload/")
+    parser.add_argument("--merge", default="https://zerofs.link/api/files/merge/")
+    parser.add_argument("--createrecord", default="https://zerofs.link/api/files/create_record/")
+    parser.add_argument("--extra", help="Extra future flag", default=None)
+    parser.add_argument("--token", help="Optional user token", default=None)
+    parser.add_argument("--note", help="Optional file note", default="")
+    parser.add_argument("--vault", default="euc1")  # another is usc1.zerofs.link
+    parser.add_argument("--continue-on-error", action="store_true", help="Continue processing other files if one fails")
+    args = parser.parse_args()
+
+    try:
+        # Handle decryption mode (single file only)
+        if args.decrypt:
+            if len(args.files) > 1:
+                logging.error("Decryption mode only supports single file")
+                sys.exit(1)
+            if not args.keyfile or not args.output:
+                logging.error("--keyfile and --output are required for decryption")
+                sys.exit(1)
+            with open(args.keyfile, 'rb') as kf:
+                key = kf.read()
+            decrypt_file(args.files[0], args.output, key)
+            logging.info("Decrypted file saved to %s", args.output)
+            return
+
+        # Collect all files to process
+        all_files = collect_files(args.files, args.recursive)
+        
+        if not all_files:
+            logging.error("No files found to process")
+            sys.exit(1)
+        
+        logging.info("Found %d file(s) to process", len(all_files))
+        for i, file_path in enumerate(all_files, 1):
+            logging.info("%d. %s", i, file_path)
+        
+        # Process each file
+        successful_uploads = 0
+        failed_uploads = 0
+        
+        for i, file_path in enumerate(all_files):
+            success = process_single_file(file_path, args, i, len(all_files))
+            if success:
+                successful_uploads += 1
+            else:
+                failed_uploads += 1
+                if not args.continue_on_error:
+                    logging.error("Stopping due to error. Use --continue-on-error to process remaining files.")
+                    break
+        
+        # Summary
+        logging.info("=" * 60)
+        logging.info("UPLOAD SUMMARY")
+        logging.info("=" * 60)
+        logging.info("✅ Successful: %d", successful_uploads)
+        logging.info("❌ Failed: %d", failed_uploads)
+        logging.info("📁 Total files: %d", len(all_files))
+        
+        if failed_uploads > 0 and not args.continue_on_error:
+            sys.exit(1)
             
+    except KeyboardInterrupt:
+        logging.info("Upload process interrupted by user")
+        sys.exit(1)
     except Exception as e:
         logging.error("Fatal error: %s", e)
         sys.exit(1)
