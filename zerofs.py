@@ -8,9 +8,6 @@ import sys
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
-import concurrent.futures
-import threading
-from typing import List, Dict, Any
 
 CHUNK_SIZE = 90 * 1024 * 1024  # Don't change. server will reject upload.
 
@@ -124,133 +121,7 @@ def upload_single_part(url, file_path):
         raise
 
 
-def upload_part_worker(part_info: Dict[str, Any], file_path: str, file_offset: int, chunk_size: int, 
-                      pbar_lock: threading.Lock, main_pbar: tqdm, file_lock: threading.Lock) -> Dict[str, Any]:
-    """Upload a single part in parallel using streaming from file"""
-    try:
-        part_number = part_info['partNumber']
-        url = part_info['url']
-        
-        logging.info(f"Starting upload of part {part_number} ({chunk_size} bytes)")
-        
-        def chunk_reader():
-            """Stream data directly from file without loading entire chunk into memory"""
-            bytes_read = 0
-            with file_lock:  # Ensure thread-safe file access
-                with open(file_path, 'rb') as f:
-                    f.seek(file_offset)
-                    while bytes_read < chunk_size:
-                        # Read in 1MB blocks
-                        block_size = min(1024 * 1024, chunk_size - bytes_read)
-                        block = f.read(block_size)
-                        if not block:
-                            break
-                        bytes_read += len(block)
-                        
-                        # Update progress bar in thread-safe way
-                        with pbar_lock:
-                            main_pbar.update(len(block))
-                        yield block
-        
-        response = requests.put(url, data=chunk_reader())
-        response.raise_for_status()
-        etag = response.headers.get('ETag', '').strip('"')
-        
-        logging.info(f"Completed upload of part {part_number}")
-        return {'PartNumber': part_number, 'ETag': etag}
-        
-    except (requests.exceptions.RequestException, OSError) as e:
-        logging.error(f"Failed to upload part {part_number}: {e}")
-        raise
-
-
-def upload_multipart_parallel(upload_info, file_path, api_merge_url, max_workers=4):
-    """Upload multipart with parallel workers - memory efficient for large files"""
-    try:
-        total_size = os.path.getsize(file_path)
-        parts = upload_info["parts"]
-        upload_id = upload_info["uploadId"]
-        key = upload_info["key"]
-        
-        logging.info(f"Starting parallel multipart upload with {max_workers} workers")
-        logging.info(f"File size: {total_size / (1024**3):.2f} GB, Parts: {len(parts)}")
-        
-        # Calculate file offsets for each part (streaming approach)
-        part_info_with_offsets = []
-        current_offset = 0
-        
-        for part in parts:
-            part_size = min(CHUNK_SIZE, total_size - current_offset)
-            if part_size <= 0:
-                break
-            part_info_with_offsets.append({
-                'part': part,
-                'offset': current_offset,
-                'size': part_size
-            })
-            current_offset += part_size
-        
-        # Create thread-safe locks
-        pbar_lock = threading.Lock()
-        file_lock = threading.Lock()  # Prevent concurrent file access issues
-        
-        # Create progress bar for overall upload
-        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Uploading (parallel)", colour="green") as main_pbar:
-            
-            # Upload parts in parallel using streaming
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all upload tasks
-                future_to_part = {}
-                for part_info in part_info_with_offsets:
-                    future = executor.submit(
-                        upload_part_worker,
-                        part_info['part'],
-                        file_path,
-                        part_info['offset'],
-                        part_info['size'],
-                        pbar_lock,
-                        main_pbar,
-                        file_lock
-                    )
-                    future_to_part[future] = part_info['part']['partNumber']
-                
-                # Collect results maintaining part order
-                part_etags = [None] * len(part_info_with_offsets)
-                for future in concurrent.futures.as_completed(future_to_part):
-                    part_number = future_to_part[future]
-                    try:
-                        etag_info = future.result()
-                        # Store in correct position (part numbers are 1-indexed)
-                        part_etags[part_number - 1] = etag_info
-                    except Exception as e:
-                        logging.error(f"Part {part_number} failed: {e}")
-                        raise
-        
-        # Filter out None values and ensure we have all parts
-        part_etags = [etag for etag in part_etags if etag is not None]
-        if len(part_etags) != len(part_info_with_offsets):
-            raise ValueError(f"Expected {len(part_info_with_offsets)} parts, got {len(part_etags)}")
-        
-        logging.info("All parts uploaded. Completing multipart upload...")
-        merge_headers = {
-            'vaultid': upload_info.get("vaultid"),
-            'key': key,
-            'uploadid': upload_id,
-            'Content-Type': 'application/json'
-        }
-        merge_payload = {'parts': part_etags}
-        response = requests.post(api_merge_url, headers=merge_headers, json=merge_payload)
-        response.raise_for_status()
-        data = response.json()
-        logging.info("Parallel multipart upload complete. File ID: %s", data.get('fileid'))
-        
-    except (OSError, requests.exceptions.RequestException, KeyError) as e:
-        logging.error("Parallel multipart upload failed: %s", e)
-        raise
-
-
 def upload_multipart(upload_info, file_path, api_merge_url):
-    """Original sequential multipart upload"""
     try:
         total_size = os.path.getsize(file_path)
         part_etags = []
@@ -308,11 +179,7 @@ def main():
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
     parser.add_argument("--note", help="Optional file note", default="")
-    parser.add_argument("--vault", default="f4b1c8wzxe")
-    parser.add_argument("--parallel-upload", action="store_true", 
-                       help="Enable parallel multipart upload for faster speeds")
-    parser.add_argument("--max-workers", type=int, default=20,
-                       help="Maximum number of parallel upload workers (default: 4)")
+    parser.add_argument("--vault", default="euc1.zerofs.link")  # another is usc1.zerofs.link
     args = parser.parse_args()
 
     try:
@@ -350,12 +217,8 @@ def main():
             logging.info("Using single PUT upload.")
             upload_single_part(upload_info["url"], encrypted_file_path)
         else:
-            if args.parallel_upload:
-                logging.info(f"Using parallel multipart upload with {args.max_workers} workers.")
-                upload_multipart_parallel(upload_info, encrypted_file_path, args.merge, args.max_workers)
-            else:
-                logging.info("Using sequential multipart upload.")
-                upload_multipart(upload_info, encrypted_file_path, args.merge)
+            logging.info("Using multipart upload.")
+            upload_multipart(upload_info, encrypted_file_path, args.merge)
 
         logging.info("Creating file record ...")
         create_file_record(
