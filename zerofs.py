@@ -158,6 +158,7 @@ def upload_multipart(upload_info, file_path, api_merge_url):
 def main():
     parser = argparse.ArgumentParser(description="Encrypt/upload or decrypt file")
     parser.add_argument("file", help="Path to file")
+    parser.add_argument("--encrypt", action="store_true", help="Encrypt file before uploading")
     parser.add_argument("--decrypt", action="store_true", help="Only decrypt the file, no upload")
     parser.add_argument("--keyfile", help="Path to decryption key file (hex encoded)")
     parser.add_argument("--output", help="Output path for decrypted file")
@@ -183,41 +184,59 @@ def main():
 
         file_path = args.file
         filename = os.path.basename(file_path)
+        enc_key = None  # Initialize encryption key as None
 
-        encrypted_file_path = f"{file_path}.0fs"
-        logging.info("Encrypting file %s ...", file_path)
-        enc_key = encrypt_file(file_path, encrypted_file_path)
+        # Handle encryption logic
+        if args.encrypt:
+            encrypted_file_path = f"{file_path}.0fs"
+            logging.info("Encrypting file %s ...", file_path)
+            enc_key = encrypt_file(file_path, encrypted_file_path)
 
-        enc_key_filename = f"{filename}_decryption_key.txt"
-        with open(enc_key_filename, 'wb') as key_file:
-            key_file.write(enc_key)
-        logging.info("Decryption key saved to %s", enc_key_filename)
+            # Save encryption key to file
+            enc_key_filename = f"{filename}_decryption_key.txt"
+            with open(enc_key_filename, 'wb') as key_file:
+                key_file.write(enc_key)
+            logging.info("Decryption key saved to %s", enc_key_filename)
+            
+            # Use encrypted file for upload
+            upload_file_path = encrypted_file_path
+            upload_filename = os.path.basename(encrypted_file_path)
+        else:
+            logging.info("Uploading file without encryption: %s", file_path)
+            # Use original file for upload
+            upload_file_path = file_path
+            upload_filename = filename
 
-        enc_filename = os.path.basename(encrypted_file_path)
-        filesize = os.path.getsize(encrypted_file_path)
+        filesize = os.path.getsize(upload_file_path)
 
         logging.info("Fetching upload info ...")
-        upload_info = get_upload_urls(args.api, enc_filename, filesize)
+        upload_info = get_upload_urls(args.api, upload_filename, filesize)
 
         key = upload_info["key"]
 
         if not upload_info["multipart"]:
             logging.info("Using single PUT upload.")
-            upload_single_part(upload_info["url"], encrypted_file_path)
+            upload_single_part(upload_info["url"], upload_file_path)
         else:
             logging.info("Using multipart upload.")
-            upload_multipart(upload_info, encrypted_file_path, args.merge)
+            upload_multipart(upload_info, upload_file_path, args.merge)
 
         logging.info("Creating file record ...")
         create_file_record(
             args.createrecord,
-            enc_filename,
+            upload_filename,
             filesize,
             key,
             user_token=args.token,
             file_note=args.note,
             vault_id=args.vault
         )
+        
+        # Clean up encrypted file if it was created
+        if args.encrypt and os.path.exists(encrypted_file_path):
+            os.remove(encrypted_file_path)
+            logging.info("Temporary encrypted file removed: %s", encrypted_file_path)
+            
     except Exception as e:
         logging.error("Fatal error: %s", e)
         sys.exit(1)
