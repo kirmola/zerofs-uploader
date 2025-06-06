@@ -13,7 +13,8 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import io
 
-CHUNK_SIZE = 250 * 1024 * 1024  # Don't change. server will reject upload.
+CHUNK_SIZE = 90 * 1024 * 1024  # Don't change. server will reject upload.
+ZEROFS_DOMAIN = "https://zerofs.link"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -281,13 +282,13 @@ def main():
     parser.add_argument("--decrypt", action="store_true", help="Only decrypt the file, no upload")
     parser.add_argument("--keyfile", help="Path to decryption key file (hex encoded)")
     parser.add_argument("--output", help="Output path for decrypted file (decrypt mode only)")
-    parser.add_argument("--api", default="https://zerofs.link/api/files/request_upload/")
-    parser.add_argument("--merge", default="https://zerofs.link/api/files/merge/")
-    parser.add_argument("--createrecord", default="https://zerofs.link/api/files/create_record/")
+    parser.add_argument("--api", default=f"{ZEROFS_DOMAIN}/api/files/request_upload/")
+    parser.add_argument("--merge", default=f"{ZEROFS_DOMAIN}/api/files/merge/")
+    parser.add_argument("--createrecord", default=f"{ZEROFS_DOMAIN}/api/files/create_record/")
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
     parser.add_argument("--note", help="Optional file note", default="")
-    parser.add_argument("--vault", default="euc1")  # another is usc1.zerofs.link
+    parser.add_argument("--vault", default="euc1.zerofs.link")  # another is usc1.zerofs.link
     parser.add_argument("--continue-on-error", action="store_true", help="Continue processing other files if one fails")
     args = parser.parse_args()
 
