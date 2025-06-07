@@ -84,7 +84,7 @@ jobs:
     - name: Build with Nuitka (Linux ARM64)
       if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
       run: |
-        python -m nuitka ${{ matrix.nuitka_args }} --target-arch=arm64 zerofs.py
+        python -m nuitka ${{ matrix.nuitka_args }} zerofs.py
 
     - name: Build with Nuitka (Other platforms)
       if: matrix.platform != 'linux' || matrix.arch != 'aarch64'
