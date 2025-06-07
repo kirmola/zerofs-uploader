@@ -21,7 +21,7 @@ jobs:
             nuitka_args: --onefile --assume-yes-for-downloads
           - platform: linux
             arch: aarch64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm64
             binary_name: zerofs-linux-aarch64
             nuitka_args: --onefile --assume-yes-for-downloads
           # Windows builds
@@ -29,11 +29,6 @@ jobs:
             arch: x86_64
             runner: windows-latest
             binary_name: zerofs-windows-x86_64.exe
-            nuitka_args: --onefile --assume-yes-for-downloads --disable-console
-          - platform: windows
-            arch: aarch64
-            runner: windows-latest
-            binary_name: zerofs-windows-aarch64.exe
             nuitka_args: --onefile --assume-yes-for-downloads --disable-console
           # macOS builds
           - platform: macos
@@ -148,7 +143,6 @@ jobs:
           
           ### Windows
           - `zerofs-windows-x86_64.exe` - Windows x86_64 binary
-          - `zerofs-windows-aarch64.exe` - Windows ARM64 binary
           
           ### macOS
           - `zerofs-macos-x86_64` - macOS Intel binary
@@ -160,7 +154,6 @@ jobs:
           ./binaries/zerofs-linux-x86_64/zerofs-linux-x86_64
           ./binaries/zerofs-linux-aarch64/zerofs-linux-aarch64
           ./binaries/zerofs-windows-x86_64.exe/zerofs-windows-x86_64.exe
-          ./binaries/zerofs-windows-aarch64.exe/zerofs-windows-aarch64.exe
           ./binaries/zerofs-macos-x86_64/zerofs-macos-x86_64
           ./binaries/zerofs-macos-aarch64/zerofs-macos-aarch64
         draft: false
