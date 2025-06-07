@@ -21,7 +21,7 @@ jobs:
             nuitka_args: --onefile --assume-yes-for-downloads
           - platform: linux
             arch: aarch64
-            runner: ubuntu-24.04-arm64
+            runner: ubuntu-24.04-arm
             binary_name: zerofs-linux-aarch64
             nuitka_args: --onefile --assume-yes-for-downloads
           # Windows builds
