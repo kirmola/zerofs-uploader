@@ -288,7 +288,7 @@ def main():
     parser.add_argument("--extra", help="Extra future flag", default=None)
     parser.add_argument("--token", help="Optional user token", default=None)
     parser.add_argument("--note", help="Optional file note", default="")
-    parser.add_argument("--vault", default="euc1.zerofs.link")  # another is usc1.zerofs.link
+    parser.add_argument("--vault", default="euc1")  # another is usc1
     parser.add_argument("--continue-on-error", action="store_true", help="Continue processing other files if one fails")
     args = parser.parse_args()
 
