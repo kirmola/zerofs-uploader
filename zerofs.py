@@ -72,7 +72,9 @@ def create_file_record(api_url, file_name, file_size, key, user_token=None, file
 
         response = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload)
         response.raise_for_status()
-        logging.info("File record created: %s", response.json())
+        logging.info("|=========================================")
+        logging.info("|File record created: %s", response.json())
+        logging.info("|=========================================")
         return response.json()
     except requests.exceptions.RequestException as e:
         logging.error("Failed to create file record: %s", e)
