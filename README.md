@@ -169,7 +169,7 @@ Use `--continue-on-error` to keep processing even if some files fail. Perfect fo
 
 ## Important Crap
 
-* **CHUNK_SIZE** is locked at 250MB. Don't touch it. We mean it.
+* **CHUNK_SIZE** is locked at 90MB. Don't touch it. We mean it.
 * Every encrypted file gets its own AES key. Lose it = bye-bye data.
 * Notes get base64'd. No, we won't read them. Probably.
 * Wildcards are expanded by your shell, so `*.txt` works everywhere
