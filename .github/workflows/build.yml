@@ -65,7 +65,7 @@ jobs:
         echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
         echo "CXX=aarch64-linux-gnu-g++" >> $GITHUB_ENV
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -107,7 +107,7 @@ jobs:
         move zerofs.exe ${{ matrix.binary_name }}
 
     - name: Upload binary as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.binary_name }}
         path: ${{ matrix.binary_name }}
@@ -123,7 +123,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: ./binaries
 
@@ -134,7 +134,7 @@ jobs:
         echo "timestamp=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
     - name: Create Release with Binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.commit.outputs.timestamp }}-${{ steps.commit.outputs.sha_short }}
         name: Release ${{ steps.commit.outputs.timestamp }}
