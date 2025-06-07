@@ -8,31 +8,62 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }} Binary
-    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }} Binary
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
+          # Linux builds
+          - platform: linux
             arch: x86_64
+            runner: ubuntu-latest
             binary_name: zerofs-linux-x86_64
             nuitka_args: --onefile --assume-yes-for-downloads
-          - os: windows-latest
-            platform: windows
+          - platform: linux
+            arch: aarch64
+            runner: ubuntu-latest
+            binary_name: zerofs-linux-aarch64
+            nuitka_args: --onefile --assume-yes-for-downloads
+          # Windows builds
+          - platform: windows
             arch: x86_64
+            runner: windows-latest
             binary_name: zerofs-windows-x86_64.exe
             nuitka_args: --onefile --assume-yes-for-downloads --disable-console
-          - os: macos-latest
-            platform: macos
+          - platform: windows
+            arch: aarch64
+            runner: windows-latest
+            binary_name: zerofs-windows-aarch64.exe
+            nuitka_args: --onefile --assume-yes-for-downloads --disable-console
+          # macOS builds
+          - platform: macos
             arch: x86_64
+            runner: macos-13
             binary_name: zerofs-macos-x86_64
+            nuitka_args: --onefile --assume-yes-for-downloads
+          - platform: macos
+            arch: aarch64
+            runner: macos-latest
+            binary_name: zerofs-macos-aarch64
             nuitka_args: --onefile --assume-yes-for-downloads
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Set up QEMU (for ARM64 emulation on Linux)
+      if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Set up cross-compilation (Linux ARM64)
+      if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+        echo "CXX=aarch64-linux-gnu-g++" >> $GITHUB_ENV
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -45,32 +76,38 @@ jobs:
         pip install -r requirements.txt || echo "No requirements.txt found"
 
     - name: Install additional dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.platform == 'linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y ccache patchelf
 
     - name: Install additional dependencies (macOS)
-      if: matrix.os == 'macos-latest'
+      if: matrix.platform == 'macos'
       run: |
         brew install ccache
 
-    - name: Build with Nuitka
+    - name: Build with Nuitka (Linux ARM64)
+      if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+      run: |
+        python -m nuitka ${{ matrix.nuitka_args }} --target-arch=arm64 zerofs.py
+
+    - name: Build with Nuitka (Other platforms)
+      if: matrix.platform != 'linux' || matrix.arch != 'aarch64'
       run: |
         python -m nuitka ${{ matrix.nuitka_args }} zerofs.py
 
     - name: Rename binary (Linux/macOS)
-      if: matrix.os != 'windows-latest'
+      if: matrix.platform != 'windows'
       run: |
         mv zerofs.bin ${{ matrix.binary_name }}
 
     - name: Rename binary (Windows)
-      if: matrix.os == 'windows-latest'
+      if: matrix.platform == 'windows'
       run: |
         move zerofs.exe ${{ matrix.binary_name }}
 
     - name: Upload binary as artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.binary_name }}
         path: ${{ matrix.binary_name }}
@@ -86,7 +123,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v3
       with:
         path: ./binaries
 
@@ -97,7 +134,7 @@ jobs:
         echo "timestamp=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
     - name: Create Release with Binaries
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ steps.commit.outputs.timestamp }}-${{ steps.commit.outputs.sha_short }}
         name: Release ${{ steps.commit.outputs.timestamp }}
@@ -105,16 +142,27 @@ jobs:
           Automated release from commit ${{ github.sha }}
           
           ## Binaries
+          ### Linux
           - `zerofs-linux-x86_64` - Linux x86_64 binary
-          - `zerofs-windows-x86_64.exe` - Windows x86_64 binary  
-          - `zerofs-macos-x86_64` - macOS x86_64 binary
+          - `zerofs-linux-aarch64` - Linux ARM64 binary
+          
+          ### Windows
+          - `zerofs-windows-x86_64.exe` - Windows x86_64 binary
+          - `zerofs-windows-aarch64.exe` - Windows ARM64 binary
+          
+          ### macOS
+          - `zerofs-macos-x86_64` - macOS Intel binary
+          - `zerofs-macos-aarch64` - macOS Apple Silicon binary
           
           ## Changes
           ${{ github.event.head_commit.message }}
         files: |
           ./binaries/zerofs-linux-x86_64/zerofs-linux-x86_64
+          ./binaries/zerofs-linux-aarch64/zerofs-linux-aarch64
           ./binaries/zerofs-windows-x86_64.exe/zerofs-windows-x86_64.exe
+          ./binaries/zerofs-windows-aarch64.exe/zerofs-windows-aarch64.exe
           ./binaries/zerofs-macos-x86_64/zerofs-macos-x86_64
+          ./binaries/zerofs-macos-aarch64/zerofs-macos-aarch64
         draft: false
         prerelease: false
       env:
