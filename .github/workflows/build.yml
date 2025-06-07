@@ -1,0 +1,121 @@
+name: Build and Release Cross-Platform Binaries
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} Binary
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            binary_name: zerofs-linux-x86_64
+            nuitka_args: --onefile --assume-yes-for-downloads
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
+            binary_name: zerofs-windows-x86_64.exe
+            nuitka_args: --onefile --assume-yes-for-downloads --disable-console
+          - os: macos-latest
+            platform: macos
+            arch: x86_64
+            binary_name: zerofs-macos-x86_64
+            nuitka_args: --onefile --assume-yes-for-downloads
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install nuitka
+        pip install -r requirements.txt || echo "No requirements.txt found"
+
+    - name: Install additional dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ccache patchelf
+
+    - name: Install additional dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install ccache
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka ${{ matrix.nuitka_args }} zerofs.py
+
+    - name: Rename binary (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        mv zerofs.bin ${{ matrix.binary_name }}
+
+    - name: Rename binary (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        move zerofs.exe ${{ matrix.binary_name }}
+
+    - name: Upload binary as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.binary_name }}
+        path: ${{ matrix.binary_name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./binaries
+
+    - name: Get commit info
+      id: commit
+      run: |
+        echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "timestamp=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+    - name: Create Release with Binaries
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.commit.outputs.timestamp }}-${{ steps.commit.outputs.sha_short }}
+        name: Release ${{ steps.commit.outputs.timestamp }}
+        body: |
+          Automated release from commit ${{ github.sha }}
+          
+          ## Binaries
+          - `zerofs-linux-x86_64` - Linux x86_64 binary
+          - `zerofs-windows-x86_64.exe` - Windows x86_64 binary  
+          - `zerofs-macos-x86_64` - macOS x86_64 binary
+          
+          ## Changes
+          ${{ github.event.head_commit.message }}
+        files: |
+          ./binaries/zerofs-linux-x86_64/zerofs-linux-x86_64
+          ./binaries/zerofs-windows-x86_64.exe/zerofs-windows-x86_64.exe
+          ./binaries/zerofs-macos-x86_64/zerofs-macos-x86_64
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
