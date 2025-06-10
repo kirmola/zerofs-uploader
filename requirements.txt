@@ -6,7 +6,7 @@ idna==3.10
 Nuitka==2.7.6
 ordered-set==4.1.0
 pycparser==2.22
-requests==2.32.3
+requests==2.32.4
 tqdm==4.67.1
 urllib3==2.4.0
 zstandard==0.23.0
