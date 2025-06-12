@@ -1,6 +1,6 @@
 # 🔐 ZeroFS Upload Script (a.k.a. Crypto Yeeter 9000)
 
-## See the source code at [ZeroFS Uploader Script](https://github.com/kirmola/zerofs-uploader)
+## See the source code at [ZeroFS Uploader Script](https://github.com/kirmola/zerofs-uploader){:target="_blank"}
 
 This thing locks your files with AES before blasting them into ZeroFS. Single files, bulk uploads, entire directories — it devours them all. Encryption's optional now (fancy!), supports wildcards, and can process hundreds of files in one go. Toss on notes, tag a vault, flash a token — done.
 
