@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import io
 
-CHUNK_SIZE = 5 * 1000 * 1000 * 1000  # Don't change. server will reject upload.
+CHUNK_SIZE = 50 * 1000 * 1000  # Don't change. server will reject upload.
 ZEROFS_DOMAIN = "https://zerofs.link"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
